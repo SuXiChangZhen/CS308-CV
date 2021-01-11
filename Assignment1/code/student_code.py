@@ -29,48 +29,53 @@ def my_imfilter(image, filter, pad='REFLECT'):
     ### TODO: YOUR CODE HERE ###
     assert len(image.shape) == 3
     assert pad == 'REFLECT' or pad == 'CONSTANT'
-    
+
     channel = image.shape[2]
     krnl_h, krnl_w = filter.shape[:2]  # kernel size
     img_h, img_w = image.shape[:2]  # image size
-    shape_fft = (img_h + krnl_h - 1, img_w + krnl_w - 1)
     shape_stride = (img_h, img_w, krnl_h, krnl_w)  # shape for stride
     pad_h = (krnl_h - 1) // 2
     pad_w = (krnl_w - 1) // 2
-    pad_list = [(pad_h, pad_h), (pad_w, pad_w), (0,0)]
+    pad_list = [(pad_h, pad_h), (pad_w, pad_w), (0, 0)]
 
     # pad the image
     if pad == 'REFLECT':
-        image_pad = np.pad(image, pad_list, 'reflect')
+        padded_image = np.pad(image, pad_list, 'reflect')
     else:
-        image_pad = np.pad(image, pad_list, 'constant')
+        padded_image = np.pad(image, pad_list, 'constant')
+
     dst = []  # save the result of each channel
 
     if max(krnl_h, krnl_w) >= 11:
         # Use fft2 to accelerate
-        F = np.fft.fft2(filter, shape_fft)
+        fft_shape = (img_h + krnl_h - 1, img_w + krnl_w - 1)
+        # pad filter
+        filter_pad = np.pad(filter, ([(img_h+1)//2, img_h//2],[(img_w+1)//2, img_w//2]), 'constant')
+        filter_shift = np.fft.fftshift(filter_pad)
+        F = np.fft.fft2(filter_shift, fft_shape)
         for i in range(channel):
-            image_c = image_pad[:, :, i].copy()
-            I_c = np.fft.fft2(image_c, shape_fft)
-            result_c = np.fft.ifft2(I_c * F)
+            image_c = padded_image[:, :, i].copy()  # select one channel
+            fft_image_c = np.fft.fft2(image_c, fft_shape)
+            result_c = np.fft.ifft2(fft_image_c * F)
             result_c = np.real(result_c)
             dst.append(result_c)
-        filtered_image = np.dstack(dst)        
-        filtered_image = filtered_image[-img_h:, -img_w:]
+        filtered_image = np.dstack(dst)
+        # cut the image to the original size
+        filtered_image = filtered_image[pad_h:pad_h+img_h, pad_w:pad_w+img_w]
     else:
-        strides = np.array([image_pad.shape[1], 1, image_pad.shape[1], 1]) * image.itemsize
+        strides = np.array([padded_image.shape[1], 1, padded_image.shape[1], 1]) * image.itemsize
         dst = []
         for i in range(channel):
-            img_c = image_pad[:, :, i].copy()
+            img_c = padded_image[:, :, i].copy()
             img_c = np.lib.stride_tricks.as_strided(img_c, shape_stride, strides)
             dst.append(np.tensordot(img_c, filter, axes=[(2, 3), (0, 1)]))
-        filtered_image = np.dstack(dst)        
-    ### END OF STUDENT CODE ####
+        filtered_image = np.dstack(dst)
+        ### END OF STUDENT CODE ####
     ############################
     return filtered_image
 
 
-def create_hybrid_image(image1, image2, filter, filter2 = None):
+def create_hybrid_image(image1, image2, filter, filter2=None):
     """
     Takes two images and creates a hybrid image. Returns the low
     frequency content of image1, the high frequency content of
